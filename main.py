@@ -1,121 +1,106 @@
-import os
-import requests
+import re
 import asyncio
+import logging
+import os
 from datetime import datetime
-from telethon import TelegramClient
+
+from telethon import TelegramClient, events
+from bs4 import BeautifulSoup
+import requests
 from dotenv import load_dotenv
 
-# --- Load ENV ---
+# Load env
 load_dotenv()
+
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 OWNER_ID = int(os.getenv("OWNER_ID"))
 TO_USER_ID = int(os.getenv("TO_USER_ID"))
-BIRDEYE_API_KEY = os.getenv("BIRDEYE_API_KEY")
+MONITOR_CHANNELS = [int(i) for i in os.getenv("MONITOR_CHANNELS").split(",") if i.strip()]
 
-client = TelegramClient("x100_detector", API_ID, API_HASH)
+# Logging
+logging.basicConfig(
+    filename='log.txt',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
-# --- Fetch Trending CA from Pump.fun ---
-async def fetch_trending_ca():
+client = TelegramClient("monitor_bot", API_ID, API_HASH)
+
+# Regex for Solana CA (base58)
+CA_REGEX = re.compile(r'\b[1-9A-HJ-NP-Za-km-z]{32,44}\b')
+
+# Fetch trending CA from Pump.fun via web scraping
+def fetch_trending_ca():
+    url = "https://pump.fun/trending"
+    headers = {"User-Agent": "Mozilla/5.0"}
+
     try:
-        res = requests.get("https://pump.fun/api/trending", timeout=10)
-        print(f"[DEBUG] Status: {res.status_code}")
-        print(f"[DEBUG] Text: {res.text}")
-        return [item["address"] for item in res.json()[:10]]
+        res = requests.get(url, headers=headers, timeout=10)
+        if res.status_code != 200:
+            print(f"[ERROR] Failed to get page: {res.status_code}")
+            return []
+
+        soup = BeautifulSoup(res.text, "html.parser")
+        ca_list = []
+
+        for a in soup.find_all("a", href=True):
+            if "/token/" in a['href']:
+                ca = a['href'].split("/token/")[-1]
+                if 30 < len(ca) <= 44:
+                    ca_list.append(ca)
+
+        return list(dict.fromkeys(ca_list))[:10]
+
     except Exception as e:
-        print(f"[❌ fetch_trending_ca] {e}")
+        print(f"[ERROR] Scraping failed: {e}")
         return []
 
-# --- Get Token Info from BirdEye ---
-def fetch_token_info(ca):
-    url = f"https://public-api.birdeye.so/public/token/{ca}"
-    try:
-        res = requests.get(url, headers={"X-API-KEY": BIRDEYE_API_KEY}, timeout=10)
-        return res.json().get("data", {})
-    except Exception as e:
-        print(f"[❌ fetch_token_info] {e}")
-        return {}
+# Process and send detected CA
+async def detect_and_forward_ca(event):
+    text = event.message.message if event.message else ''
+    matches = CA_REGEX.findall(text)
 
-# --- Get Top Holders Info ---
-def fetch_top_holders(ca):
-    url = f"https://public-api.birdeye.so/public/token/top-holders?address={ca}&limit=5"
-    try:
-        res = requests.get(url, headers={"X-API-KEY": BIRDEYE_API_KEY}, timeout=10)
-        return res.json().get("data", [])
-    except Exception as e:
-        print(f"[❌ fetch_top_holders] {e}")
-        return []
+    if matches:
+        ca_list = "\n".join(matches)
+        sender = await event.get_sender()
+        sender_name = sender.username or sender.first_name or "Unknown"
 
-# --- Skoring Token ---
-def score_token(data, holders_info):
-    score = 0
-    liquidity = data.get("liquidity", 0)
-    holders = data.get("holders", 0)
-    market_cap = data.get("marketCap", 0)
-    created_at = data.get("createdAtUnix", 0)
+        logging.info(f"[CA DETECTED] From: {sender_name} | Matches: {ca_list}")
 
-    if liquidity > 1000: score += 20
-    if liquidity > 3000: score += 10
-    if holders > 100: score += 15
-    if holders > 300: score += 10
-    if market_cap < 30000: score += 10
-    if market_cap < 10000: score += 10
+        # Kirim pesan penuh ke saved messages
+        await client.send_message(OWNER_ID, f"📩 Pesan Baru dari {sender_name}:\n\n{text}")
 
-    if created_at:
-        age_min = (datetime.utcnow().timestamp() - created_at) / 60
-        if age_min < 60: score += 10
+        # Kirim CA list ke saved messages juga
+        await client.send_message(OWNER_ID, f"🔍 CA Ditemukan:\n{ca_list}")
 
-    if holders_info:
-        top_pct = float(holders_info[0].get("percentage", 100))
-        if top_pct < 10: score += 10
-        elif top_pct > 30: score -= 10
+        # Kirim hanya CA ke TO_USER_ID
+        await client.send_message(TO_USER_ID, ca_list)
 
-    return score
+# Event: Pesan baru di channel
+@client.on(events.NewMessage(chats=MONITOR_CHANNELS))
+async def handle_new_channel(event):
+    print(f"[MESSAGE] New message in channel {event.chat.title or event.chat_id}")
+    await detect_and_forward_ca(event)
 
-# --- Kirim Notifikasi ---
-async def notify(text):
-    await client.send_message(OWNER_ID, text, parse_mode="md")
+# Heartbeat log
+async def heartbeat():
+    while True:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[HEARTBEAT] {now}")
+        logging.info("[HEARTBEAT]")
+        await asyncio.sleep(2)
 
-async def send_ca_only(ca):
-    await client.send_message(TO_USER_ID, ca)
-
-# --- Loop Utama Bot ---
-async def monitor():
+# Start bot
+async def main():
     await client.start()
     print("🚀 Bot started.")
-    sent_set = set()
 
-    while True:
-        try:
-            cas = await fetch_trending_ca()
-            for ca in cas:
-                if ca in sent_set:
-                    continue
+    # Debug: tampilkan 10 trending CA di awal
+    cas = fetch_trending_ca()
+    print(f"[DEBUG] Trending CA from Pump.fun:\n" + "\n".join(cas))
 
-                data = fetch_token_info(ca)
-                if not data or not data.get("symbol"): continue
-
-                holders_info = fetch_top_holders(ca)
-                score = score_token(data, holders_info)
-
-                if score >= 60:
-                    msg = (
-                        f"🚀 *Token Potensial X100!*\n\n"
-                        f"*Name:* {data.get('name')} ({data.get('symbol')})\n"
-                        f"*CA:* `{ca}`\n"
-                        f"*Liquidity:* ${data.get('liquidity',0):,.0f}\n"
-                        f"*Holders:* {data.get('holders',0)}\n"
-                        f"*Market Cap:* ${data.get('marketCap',0):,.0f}\n"
-                        f"*Score:* {score}/100\n"
-                        f"[🌐 Lihat di Pump.fun](https://pump.fun/{ca})"
-                    )
-                    await notify(msg)
-                    await send_ca_only(ca)
-                    sent_set.add(ca)
-            await asyncio.sleep(60)
-        except Exception as e:
-            print(f"[ERROR LOOP] {e}")
-            await asyncio.sleep(10)
+    await asyncio.gather(client.run_until_disconnected(), heartbeat())
 
 if __name__ == "__main__":
-    asyncio.run(monitor())
+    asyncio.run(main())
