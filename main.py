@@ -23,9 +23,11 @@ client = TelegramClient('session_name', API_ID, API_HASH)
 
 # ✅ Fungsi Ambil Token Baru
 def get_new_tokens():
-    url = "https://public-api.birdeye.so/public/token/mostTrending?timeframe=1h"
+    url = "https://public-api.birdeye.so/defi/v2/tokens/new_listing?limit=10&meme_platform_enabled=false"
     headers = {
-        "X-API-KEY": BIRDEYE_API_KEY
+        "X-API-KEY": BIRDEYE_API_KEY,
+        "accept": "application/json",
+        "x-chain": "solana"
     }
 
     try:
