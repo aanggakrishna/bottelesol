@@ -26,7 +26,25 @@ client = TelegramClient("monitor_bot", API_ID, API_HASH)
 
 # --- Fungsi untuk mengambil pesan selama 30 hari terakhir ---
 # Ambil pesan dari channel
-async for message in client.iter_messages(channel, offset_date=thirty_days_ago):
+
+async def fetch_messages_from_channels():
+    """Ambil semua pesan dari channel yang dimonitor selama 30 hari terakhir"""
+    try:
+        # Hitung tanggal 30 hari yang lalu
+        thirty_days_ago = datetime.now() - timedelta(days=30)
+
+        for channel_id in MONITOR_CHANNELS:
+            try:
+                # Ambil informasi channel
+                channel = await client.get_entity(channel_id)
+                channel_name = getattr(channel, "title", f"Unknown channel {channel_id}")
+                logging.info(f"📥 Fetching messages from {channel_name} ({channel_id})")
+
+                # List untuk menyimpan pesan
+                messages = []
+
+                # Ambil pesan dari channel
+                async for message in client.iter_messages(channel, offset_date=thirty_days_ago):
     # Skip MessageService objects
     if message.action:  # Pesan layanan memiliki properti 'action'
         logging.info(f"⚠️ Pesan layanan dari {channel_name}, dilewati.")
@@ -47,44 +65,6 @@ async for message in client.iter_messages(channel, offset_date=thirty_days_ago):
         logging.info(f"✅ Pesan dari {channel_name} ditambahkan ke list.")
     else:
         logging.info(f"⚠️ Pesan kosong dari {channel_name}, dilewati.")
-async def fetch_messages_from_channels():
-    """Ambil semua pesan dari channel yang dimonitor selama 30 hari terakhir"""
-    try:
-        # Hitung tanggal 30 hari yang lalu
-        thirty_days_ago = datetime.now() - timedelta(days=30)
-
-        for channel_id in MONITOR_CHANNELS:
-            try:
-                # Ambil informasi channel
-                channel = await client.get_entity(channel_id)
-                channel_name = getattr(channel, "title", f"Unknown channel {channel_id}")
-                logging.info(f"📥 Fetching messages from {channel_name} ({channel_id})")
-
-                # List untuk menyimpan pesan
-                messages = []
-
-                # Ambil pesan dari channel
-                async for message in client.iter_messages(channel, offset_date=thirty_days_ago):
-                    # Skip MessageService objects
-                    if message.is_service:
-                        logging.info(f"⚠️ Pesan layanan dari {channel_name}, dilewati.")
-                        continue
-
-                    # Ambil teks pesan
-                    message_text = message.text or message.message or ""
-                    if not message_text and message.caption:
-                        message_text = message.caption
-
-                    if message_text:
-                        # Tambahkan pesan ke list
-                        messages.append({
-                            "date": message.date.isoformat(),
-                            "sender_id": message.sender_id,
-                            "text": message_text
-                        })
-                        logging.info(f"✅ Pesan dari {channel_name} ditambahkan ke list.")
-                    else:
-                        logging.info(f"⚠️ Pesan kosong dari {channel_name}, dilewati.")
 
                 # Simpan semua pesan ke file JSON
                 save_messages_to_json(channel_name, messages)
