@@ -19,6 +19,8 @@ client = TelegramClient("x100_detector", API_ID, API_HASH)
 async def fetch_trending_ca():
     try:
         res = requests.get("https://pump.fun/api/trending", timeout=10)
+        print(f"[DEBUG] Status: {res.status_code}")
+        print(f"[DEBUG] Text: {res.text}")
         return [item["address"] for item in res.json()[:10]]
     except Exception as e:
         print(f"[❌ fetch_trending_ca] {e}")
