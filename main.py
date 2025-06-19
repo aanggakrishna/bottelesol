@@ -67,7 +67,7 @@ async def fetch_messages_from_channels():
                         logging.info(f"⚠️ Pesan kosong dari {channel_name}, dilewati.")
 
                                 # Simpan semua pesan ke file JSON
-                                save_messages_to_json(channel_name, messages)
+                save_messages_to_json(channel_name, messages)
 
             except Exception as e:
                 logging.error(f"❌ Error saat mengambil pesan dari channel {channel_id}: {e}")
