@@ -1,76 +1,74 @@
-import os
-import requests
-import logging
-from dotenv import load_dotenv
-from telethon import TelegramClient
+from solana.rpc.api import Client
+from solana.publickey import PublicKey
+from solana.rpc.types import MemcmpOpts
+import base64
+import json
+from rich import print
 
-# 🔧 Setup Logging
-logging.basicConfig(
-    filename='birdeye_debug.log',
-    level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+# === CONFIG ===
+RPC_URL = "https://api.mainnet-beta.solana.com"
+TOKEN_MINT = "EgixdvE18LuQS5RxkgBwG7JRULv3Cb4k4g3cHu1Cpump"  # Ganti dengan token pump.fun Anda
 
-# ✅ Load ENV
-load_dotenv()
-API_ID = int(os.getenv("API_ID"))
-API_HASH = os.getenv("API_HASH")
-TO_USER_ID = int(os.getenv("TO_USER_ID"))
-BIRDEYE_API_KEY = os.getenv("BIRDEYE_API_KEY")
+client = Client(RPC_URL)
 
-# ✅ Inisialisasi Telegram Client
-client = TelegramClient('session_name', API_ID, API_HASH)
+def get_token_supply(mint_address):
+    resp = client.get_token_supply(PublicKey(mint_address))
+    if resp["result"]:
+        amount = int(resp["result"]["value"]["amount"])
+        decimals = int(resp["result"]["value"]["decimals"])
+        return amount / (10 ** decimals), decimals
+    return None, None
 
-# ✅ Fungsi Ambil Token Baru
-def get_new_tokens():
-    url = "https://public-api.birdeye.so/defi/v2/tokens/new_listing?limit=10&meme_platform_enabled=false"
-    headers = {
-        "X-API-KEY": BIRDEYE_API_KEY,
-        "accept": "application/json",
-        "x-chain": "solana"
-    }
+def get_token_holders(mint_address):
+    # Ambil semua account pemilik token
+    filters = [
+        {"dataSize": 165},
+        {"memcmp": {"offset": 0, "bytes": mint_address}}
+    ]
+    result = client.get_program_accounts(PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+                                         encoding="jsonParsed", filters=filters)
+    holders = 0
+    top_holder_amount = 0
+    for acc in result["result"]:
+        data = acc["account"]["data"]["parsed"]["info"]
+        amount = int(data["tokenAmount"]["amount"])
+        if amount > 0:
+            holders += 1
+            top_holder_amount = max(top_holder_amount, amount)
+    return holders, top_holder_amount
 
-    try:
-        response = requests.get(url, headers=headers)
-        logging.debug(f"Status Code: {response.status_code}")
-        logging.debug(f"Raw Response: {response.text}")
+def estimate_marketcap(price, supply):
+    return price * supply
 
-        if response.status_code != 200:
-            logging.error(f"API gagal. Status code: {response.status_code}")
-            return []
+def check_100x(price, supply):
+    now_mc = estimate_marketcap(price, supply)
+    mc_100x = now_mc * 100
+    price_100x = price * 100
+    return now_mc, mc_100x, price_100x
 
-        data = response.json()
-        tokens = data.get("data", [])
-        logging.info(f"Token trending ditemukan: {len(tokens)}")
-        return tokens
+def main():
+    print("[bold cyan]🚀 Analisa Token Pump.fun via Solana RPC[/bold cyan]")
+    print(f"[bold]Token Mint:[/bold] {TOKEN_MINT}")
 
-    except Exception as e:
-        logging.error(f"Error saat request: {e}")
-        return []
+    # === Supply & Decimals ===
+    supply, decimals = get_token_supply(TOKEN_MINT)
+    print(f"[green]Total Supply:[/green] {supply:,.0f} (Decimals: {decimals})")
 
-# ✅ Kirim Pesan ke Saved Messages
-async def main():
-    await client.start()
+    # === Holders ===
+    holders, top_holder = get_token_holders(TOKEN_MINT)
+    top_percent = (top_holder / (supply * (10 ** decimals))) * 100
+    print(f"[green]Jumlah Holder:[/green] {holders}")
+    print(f"[green]Top Holder:[/green] {top_percent:.2f}% dari total supply")
 
-    tokens = get_new_tokens()
-    message = "🆕 Token Baru dari BirdEye:\n\n"
+    # === Harga Sekarang (masih dummy, ganti dengan perhitungan dari pool Raydium jika mau akurat) ===
+    # Misalnya: diasumsikan harga token $0.00001
+    current_price = 0.00001
+    now_mc, mc_100x, price_100x = check_100x(current_price, supply)
 
-    if not tokens:
-        message += "❌ Tidak ada token baru atau gagal mengambil data dari BirdEye API."
-    else:
-        for token in tokens[:5]:
-            try:
-                name = token.get("name", "N/A")
-                symbol = token.get("symbol", "N/A")
-                price = token.get("price_usd", 0.0)
-                mc = token.get("mc", "-")
-                message += f"🔸 {name} ({symbol})\n💲 Price: ${price:.6f}\n🧢 MC: {mc}\n\n"
-            except Exception as e:
-                logging.error(f"Error parsing token: {e}")
+    print(f"[yellow]Harga Sekarang:[/yellow] ${current_price:,.8f}")
+    print(f"[yellow]Market Cap Saat Ini:[/yellow] ${now_mc:,.2f}")
+    print(f"[bold magenta]🎯 Target 100x:[/bold magenta] Harga: ${price_100x:,.5f} | Market Cap: ${mc_100x:,.2f}")
+    print(f"[bold green]✅ Potensi 100x: {'YA' if mc_100x < 10_000_000 else 'TIDAK (sudah terlalu besar)'}[/bold green]")
 
-    await client.send_message(TO_USER_ID, message)
-    logging.info("Pesan dikirim ke Telegram.")
-
-# ✅ Jalankan
-with client:
-    client.loop.run_until_complete(main())
+if __name__ == "__main__":
+    main()
