@@ -2,7 +2,7 @@ from solana.rpc.api import Client
 from solders.pubkey import Pubkey
 from rich import print
 
-client = Client("https://api.mainnet-beta.solana.com")
+client = Client("https://api.mainnet.solana.com")
 
 # Ganti dengan token yang ingin dianalisis (dari Pump.fun atau lainnya)
 mint_address = Pubkey.from_string("EgixdvE18LuQS5RxkgBwG7JRULv3Cb4k4g3cHu1Cpump")
