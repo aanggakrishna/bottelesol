@@ -30,15 +30,27 @@ def get_new_tokens():
 
     try:
         response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        data = response.json()
-        logging.debug("API Response: %s", data)
+        logging.debug(f"Status Code: {response.status_code}")
+        logging.debug(f"Raw Response: {response.text}")
+
+        # Jika response bukan 200
+        if response.status_code != 200:
+            logging.error(f"API gagal. Status code: {response.status_code}")
+            return []
+
+        # Coba parse JSON
+        try:
+            data = response.json()
+        except Exception as json_error:
+            logging.error(f"Gagal parse JSON: {json_error}")
+            return []
 
         tokens = data.get("data", [])
-        logging.info(f"Token Ditemukan: {len(tokens)}")
+        logging.info(f"Token ditemukan: {len(tokens)}")
         return tokens
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Gagal mengakses BirdEye API: {e}")
+
+    except Exception as e:
+        logging.error(f"Error saat request: {e}")
         return []
 
 # ✅ Kirim Pesan ke Saved Messages
