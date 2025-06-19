@@ -23,7 +23,7 @@ client = TelegramClient('session_name', API_ID, API_HASH)
 
 # ✅ Fungsi Ambil Token Baru
 def get_new_tokens():
-    url = "https://public-api.birdeye.so/public/tokenlist?sort=new"
+    url = "https://public-api.birdeye.so/public/token/mostTrending?timeframe=1h"
     headers = {
         "X-API-KEY": BIRDEYE_API_KEY
     }
@@ -33,20 +33,13 @@ def get_new_tokens():
         logging.debug(f"Status Code: {response.status_code}")
         logging.debug(f"Raw Response: {response.text}")
 
-        # Jika response bukan 200
         if response.status_code != 200:
             logging.error(f"API gagal. Status code: {response.status_code}")
             return []
 
-        # Coba parse JSON
-        try:
-            data = response.json()
-        except Exception as json_error:
-            logging.error(f"Gagal parse JSON: {json_error}")
-            return []
-
+        data = response.json()
         tokens = data.get("data", [])
-        logging.info(f"Token ditemukan: {len(tokens)}")
+        logging.info(f"Token trending ditemukan: {len(tokens)}")
         return tokens
 
     except Exception as e:
