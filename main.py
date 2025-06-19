@@ -74,7 +74,15 @@ async def fetch_messages_from_channels():
 
     except Exception as e:
         logging.error(f"❌ Error saat mengambil pesan: {e}")
-
+def save_messages_to_json(channel_name, messages):
+    """Simpan pesan ke file JSON"""
+    filename = f"{channel_name.replace(' ', '_')}_messages.json"
+    try:
+        with open(filename, "w", encoding="utf-8") as json_file:
+            json.dump(messages, json_file, ensure_ascii=False, indent=4)
+        logging.info(f"✅ Pesan dari {channel_name} berhasil disimpan ke {filename}.")
+    except Exception as e:
+        logging.error(f"❌ Gagal menyimpan pesan dari {channel_name} ke JSON: {e}")
 # --- Main ---
 async def main():
     """Main entry point"""
