@@ -93,4 +93,14 @@ def analyze_token(mint: Pubkey):
     if price is None:
         return
 
-    holders
+    holders = get_holders_count(mint)
+    is_potential, reason = check_100x_potential(supply, price, holders)
+
+    if is_potential:
+        print(f"[bold green]✅ POTENSI 100x![/bold green] — {reason}")
+    else:
+        print(f"[bold yellow]⚠️ Tidak cocok 100x:[/bold yellow] {reason}")
+
+
+# Jalankan analisa
+analyze_token(mint_address)
