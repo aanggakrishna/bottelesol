@@ -78,6 +78,7 @@ def save_messages_to_json(channel_name, messages):
     """Simpan pesan ke file JSON"""
     filename = f"{channel_name.replace(' ', '_')}_messages.json"
     try:
+        logging.info(f"🔍 Menyimpan {len(messages)} pesan ke file {filename}.")
         with open(filename, "w", encoding="utf-8") as json_file:
             json.dump(messages, json_file, ensure_ascii=False, indent=4)
         logging.info(f"✅ Pesan dari {channel_name} berhasil disimpan ke {filename}.")
